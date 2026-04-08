@@ -8,6 +8,8 @@ import '../../features/settings/presentation/settings_screen.dart';
 import '../../features/delegates/presentation/delegates_screen.dart';
 import '../../features/transactions/presentation/delegate_transactions_screen.dart';
 import '../../features/reports/presentation/reports_screen.dart';
+import '../../features/merchants/presentation/merchants_screen.dart';
+import '../../features/merchants/presentation/merchant_collections_screen.dart';
 import '../presentation/main_layout.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -71,6 +73,22 @@ final routerProvider = Provider<GoRouter>((ref) {
                     path: ':id',
                     builder: (context, state) => DelegateTransactionsScreen(
                       delegateId: state.pathParameters['id']!,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/merchants',
+                builder: (context, state) => const MerchantsScreen(),
+                routes: [
+                  GoRoute(
+                    path: ':id',
+                    builder: (context, state) => MerchantCollectionsScreen(
+                      merchantId: state.pathParameters['id']!,
                     ),
                   ),
                 ],

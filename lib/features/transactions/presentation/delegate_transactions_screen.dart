@@ -6,6 +6,8 @@ import '../../delegates/data/delegate_repository.dart';
 import '../../delegates/domain/models/delegate_model.dart';
 import '../data/transaction_repository.dart';
 import '../domain/models/transaction_model.dart';
+import '../../merchants/data/merchant_collection_repository.dart';
+import '../../merchants/domain/models/merchant_collection_model.dart';
 
 final delegateTransactionsProvider = StreamProvider.family<List<TransactionModel>, String>((ref, delegateId) {
   return ref.watch(transactionRepositoryProvider).getTransactions(delegateId);
@@ -45,9 +47,13 @@ class DelegateTransactionsScreen extends ConsumerWidget {
 
           return transactionsAsync.when(
             data: (transactions) {
-              return Column(
-                children: [
-                  _buildSummaryCard(context, ref, delegate, transactions),
+              return StreamBuilder<List<MerchantCollectionModel>>(
+                stream: ref.watch(merchantCollectionRepositoryProvider).getCollectionsForDelegate(delegate.id),
+                builder: (context, merchantSnapshot) {
+                  var mCols = merchantSnapshot.data ?? [];
+                  return Column(
+                    children: [
+                      _buildSummaryCard(context, ref, delegate, transactions, mCols),
                   Expanded(
                     child: transactions.isEmpty 
                       ? const Center(child: Text('No daily transactions yet.'))
@@ -60,6 +66,8 @@ class DelegateTransactionsScreen extends ConsumerWidget {
                         ),
                   ),
                 ],
+              );
+              },
               );
             },
             loading: () => const Center(child: CircularProgressIndicator()),
@@ -81,7 +89,7 @@ class DelegateTransactionsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildSummaryCard(BuildContext context, WidgetRef ref, DelegateModel delegate, List<TransactionModel> transactions) {
+  Widget _buildSummaryCard(BuildContext context, WidgetRef ref, DelegateModel delegate, List<TransactionModel> transactions, List<MerchantCollectionModel> mCols) {
     double totalCollected = 0;
     double totalPaid = 0;
     double totalRemaining = 0;
@@ -91,6 +99,11 @@ class DelegateTransactionsScreen extends ConsumerWidget {
       totalRemaining += tx.remainingAmount;
     }
     final currency = NumberFormat.currency(symbol: 'EGP ', decimalDigits: 0);
+
+    double tMerchants = 0;
+    for (final m in mCols) {
+      tMerchants += m.remainingAmount;
+    }
 
     return Card(
       margin: const EdgeInsets.all(16),
@@ -119,6 +132,14 @@ class DelegateTransactionsScreen extends ConsumerWidget {
               children: [
                 Text(context.loc('remaining'), style: const TextStyle(color: Colors.grey)),
                 Text(currency.format(totalRemaining), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: totalRemaining > 0 ? Colors.red : Colors.green)),
+              ],
+            ),
+            const Divider(),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('مستحقات للتجار:', style: TextStyle(color: Colors.grey)),
+                Text(currency.format(tMerchants), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange)),
               ],
             ),
             if (totalRemaining < 0) ...[

@@ -25,6 +25,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget build(BuildContext context) {
     final transactionsAsync = ref.watch(allTransactionsProvider);
     final delegatesAsync = ref.watch(allDelegatesProvider);
+    final merchantCollsAsync = ref.watch(allMerchantCollectionsProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -51,15 +52,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ),
         ],
       ),
-      body: (transactionsAsync.isLoading || delegatesAsync.isLoading)
+      body: (transactionsAsync.isLoading || delegatesAsync.isLoading || merchantCollsAsync.isLoading)
           ? const Center(child: CircularProgressIndicator())
-          : (transactionsAsync.hasError || delegatesAsync.hasError)
+          : (transactionsAsync.hasError || delegatesAsync.hasError || merchantCollsAsync.hasError)
               ? const Center(child: Text('حدث خطأ في تحميل البيانات'))
-              : _buildContent(context, transactionsAsync.value ?? [], delegatesAsync.value ?? []),
+              : _buildContent(context, transactionsAsync.value ?? [], delegatesAsync.value ?? [], merchantCollsAsync.value ?? []),
     );
   }
 
-  Widget _buildContent(BuildContext context, List transactions, List delegates) {
+  Widget _buildContent(BuildContext context, List transactions, List delegates, List merchantCollections) {
     // Map delegate IDs to names
     final delegateNames = { for (var d in delegates) d.id: d.name };
 
@@ -82,6 +83,29 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     double totalPaid = 0;
     double totalDebt = 0; // Owed to office
     double totalOwedToDelegates = 0; // Owed to delegates
+
+    double totalMerchantCollected = 0;
+    double totalMerchantDebt = 0;
+
+    final filteredMerchantColls = merchantCollections.where((c) {
+      if (_dateRange == null) return true;
+      final d = c.date;
+      final start = _dateRange!.start;
+      final end = _dateRange!.end;
+      final dayDate = DateTime(d.year, d.month, d.day);
+      final dayStart = DateTime(start.year, start.month, start.day);
+      final dayEnd = DateTime(end.year, end.month, end.day);
+      return dayDate.isAtSameMomentAs(dayStart) || 
+             dayDate.isAtSameMomentAs(dayEnd) || 
+             (dayDate.isAfter(dayStart) && dayDate.isBefore(dayEnd));
+    }).toList();
+
+    for (final c in filteredMerchantColls) {
+      totalMerchantCollected += c.paidAmount;
+      if (c.remainingAmount > 0) {
+        totalMerchantDebt += c.remainingAmount;
+      }
+    }
 
     // Breakdowns
     Map<String, double> officeProfitsMap = {};
@@ -214,7 +238,35 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ),
               ),
             ],
-          )
+          ),
+          const SizedBox(height: 24),
+          const Divider(),
+          const SizedBox(height: 16),
+          // Merchant Hero Card: Total Merchant Collected
+          _buildHeroCard(
+            title: 'إجمالي المحصل في المتاجر',
+            amount: currency.format(totalMerchantCollected),
+            icon: Icons.store,
+            color: Colors.teal,
+            context: context,
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+                Expanded(
+                child: _buildMetricCard(
+                  title: 'ديون متاجر',
+                  subtitle: 'لم تُحصّل من المناديب',
+                  amount: currency.format(totalMerchantDebt),
+                  icon: Icons.warning_amber_rounded,
+                  color: Colors.redAccent,
+                  context: context,
+                ),
+              ),
+              const SizedBox(width: 16),
+              const Expanded(child: SizedBox()),
+            ],
+          ),
         ],
       ),
     );

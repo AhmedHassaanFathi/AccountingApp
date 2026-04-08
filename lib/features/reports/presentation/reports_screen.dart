@@ -9,6 +9,8 @@ import '../../delegates/data/delegate_repository.dart';
 import '../../delegates/domain/models/delegate_model.dart';
 import '../../transactions/data/transaction_repository.dart';
 import '../../transactions/domain/models/transaction_model.dart';
+import '../../merchants/data/merchant_collection_repository.dart';
+import '../../merchants/domain/models/merchant_collection_model.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/localization/app_localizations.dart';
 
@@ -23,15 +25,18 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   DelegateModel? _selectedDelegate;
   DateTimeRange? _dateRange;
 
-  Future<pw.Document?> _buildPdfDoc(List<TransactionModel> txs) async {
+  Future<pw.Document?> _buildPdfDoc(List<TransactionModel> txs, double tMerchants) async {
     if (_selectedDelegate == null || txs.isEmpty) {
-       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No data to export')));
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا توجد بيانات للطباعة (No data to export)')));
        return null;
     }
 
     final doc = pw.Document();
     final formatCurrency = NumberFormat.currency(symbol: 'EGP ', decimalDigits: 0);
-    final formatDate = DateFormat.yMd();
+    final formatDate = DateFormat('yyyy/MM/dd');
+
+    final fontRegular = await PdfGoogleFonts.cairoRegular();
+    final fontBold = await PdfGoogleFonts.cairoBold();
 
     double tCollected = 0;
     double tOffice = 0;
@@ -49,44 +54,54 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 
     doc.addPage(
       pw.Page(
+        theme: pw.ThemeData.withFont(base: fontRegular, bold: fontBold),
+        textDirection: pw.TextDirection.rtl,
         build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text('Accounting 360 - Delegate Report', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
-              pw.SizedBox(height: 10),
-              pw.Text('Delegate: ${_selectedDelegate!.name}'),
-              pw.Text('Period: ${_dateRange == null ? 'All Time' : '${formatDate.format(_dateRange!.start)} - ${formatDate.format(_dateRange!.end)}'}'),
-              pw.SizedBox(height: 20),
-              pw.Table.fromTextArray(
-                context: context,
-                headers: ['Col', 'Office', 'Delegate', 'Paid', 'Rem'],
-                data: [
-                  [
-                    formatCurrency.format(tCollected),
-                    formatCurrency.format(tOffice),
-                    formatCurrency.format(tDelegate),
-                    formatCurrency.format(tPaid),
-                    formatCurrency.format(tRemaining),
-                  ]
-                ],
-              ),
-              pw.SizedBox(height: 20),
-              pw.Text('Daily Records', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-              pw.SizedBox(height: 10),
-              pw.Table.fromTextArray(
-                context: context,
-                headers: ['Date', 'Col', 'Office', 'Del', 'Paid', 'Rem'],
-                data: txs.where((t) => t.totalAmount > 0 || t.paidAmount != 0).map((t) => [
-                  formatDate.format(t.date),
-                  formatCurrency.format(t.totalAmount),
-                  formatCurrency.format(t.officeShare),
-                  formatCurrency.format(t.delegateShare),
-                  formatCurrency.format(t.paidAmount),
-                  formatCurrency.format(t.remainingAmount),
-                ]).toList(),
-              ),
-            ],
+          return pw.Directionality(
+            textDirection: pw.TextDirection.rtl,
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text('حسابات 360 - تقرير المندوب', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+                pw.SizedBox(height: 10),
+                pw.Text('اسم المندوب: ${_selectedDelegate!.name}'),
+                pw.Text('الفترة المحددة: ${_dateRange == null ? 'كل الأوقات' : '${formatDate.format(_dateRange!.start)} إلى ${formatDate.format(_dateRange!.end)}'}'),
+                pw.SizedBox(height: 20),
+                pw.Table.fromTextArray(
+                  context: context,
+                  cellAlignment: pw.Alignment.center,
+                  headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                  headers: ['إجمالي المبيعات', 'أرباح المكتب', 'عمولة المندوب', 'ما تم توريده', 'مستحقات التجار', 'الرصيد المتبقي'],
+                  data: [
+                    [
+                      formatCurrency.format(tCollected),
+                      formatCurrency.format(tOffice),
+                      formatCurrency.format(tDelegate),
+                      formatCurrency.format(tPaid),
+                      formatCurrency.format(tMerchants),
+                      formatCurrency.format(tRemaining),
+                    ]
+                  ],
+                ),
+                pw.SizedBox(height: 30),
+                pw.Text('سجل المعاملات اليومية', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                pw.SizedBox(height: 10),
+                pw.Table.fromTextArray(
+                  context: context,
+                  cellAlignment: pw.Alignment.center,
+                  headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                  headers: ['التاريخ', 'تحصيل', 'مكتب', 'مندوب', 'تنزيلات (سداد)', 'متبقي'],
+                  data: txs.where((t) => t.totalAmount > 0 || t.paidAmount != 0).map((t) => [
+                    formatDate.format(t.date),
+                    formatCurrency.format(t.totalAmount),
+                    formatCurrency.format(t.officeShare),
+                    formatCurrency.format(t.delegateShare),
+                    formatCurrency.format(t.paidAmount),
+                    formatCurrency.format(t.remainingAmount),
+                  ]).toList(),
+                ),
+              ],
+            ),
           );
         },
       ),
@@ -95,8 +110,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     return doc;
   }
 
-  void _generatePdf(List<TransactionModel> txs) async {
-    final doc = await _buildPdfDoc(txs);
+  void _generatePdf(List<TransactionModel> txs, double tMerchants) async {
+    final doc = await _buildPdfDoc(txs, tMerchants);
     if (doc == null) return;
     
     await Printing.layoutPdf(
@@ -105,8 +120,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     );
   }
 
-  void _sharePdf(List<TransactionModel> txs) async {
-    final doc = await _buildPdfDoc(txs);
+  void _sharePdf(List<TransactionModel> txs, double tMerchants) async {
+    final doc = await _buildPdfDoc(txs, tMerchants);
     if (doc == null) return;
     
     await Printing.sharePdf(
@@ -136,13 +151,18 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     final delegates = snapshot.data ?? [];
                     return Column(
                       children: [
-                        DropdownButtonFormField<DelegateModel>(
-                          value: _selectedDelegate,
-                          decoration: const InputDecoration(labelText: 'Select Delegate'),
+                        DropdownButtonFormField<String>(
+                          value: delegates.any((d) => d.id == _selectedDelegate?.id) ? _selectedDelegate?.id : null,
+                          decoration: const InputDecoration(labelText: 'اختر مندوب'),
                           items: delegates.map((d) {
-                            return DropdownMenuItem(value: d, child: Text(d.name));
+                            return DropdownMenuItem(value: d.id, child: Text(d.name));
                           }).toList(),
-                          onChanged: (val) => setState(() => _selectedDelegate = val),
+                          onChanged: (val) {
+                            if (val != null) {
+                              final d = delegates.firstWhere((del) => del.id == val);
+                              setState(() => _selectedDelegate = d);
+                            }
+                          },
                         ),
                         const SizedBox(height: 16),
                         Row(
@@ -217,7 +237,16 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                         tRemaining += t.remainingAmount;
                       }
                       
-                      final formatCurrency = NumberFormat.currency(symbol: 'EGP ', decimalDigits: 0);
+                       return StreamBuilder<List<MerchantCollectionModel>>(
+                        stream: ref.watch(merchantCollectionRepositoryProvider).getCollectionsForDelegate(_selectedDelegate!.id),
+                        builder: (context, merchantSnapshot) {
+                          var mCols = merchantSnapshot.data ?? [];
+                          double tMerchants = 0;
+                          for (final m in mCols) {
+                             tMerchants += m.remainingAmount;
+                          }
+                          
+                          final formatCurrency = NumberFormat.currency(symbol: 'EGP ', decimalDigits: 0);
 
                       return Column(
                         children: [
@@ -250,7 +279,15 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                                       Text(formatCurrency.format(tPaid), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
                                     ],
                                   ),
-                                  const Divider(),
+                                   const Divider(),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text('مستحقات التجار (بحوزة المندوب):', style: TextStyle(color: Colors.grey)),
+                                      Text(formatCurrency.format(tMerchants), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
@@ -281,7 +318,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                                 Expanded(
                                   flex: 1,
                                   child: ElevatedButton.icon(
-                                    onPressed: () => _generatePdf(txs),
+                                    onPressed: () => _generatePdf(txs, tMerchants),
                                     icon: const Icon(Icons.print),
                                     label: const Text('طباعة'),
                                     style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
@@ -291,7 +328,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                                 Expanded(
                                   flex: 2,
                                   child: ElevatedButton.icon(
-                                    onPressed: () => _sharePdf(txs),
+                                    onPressed: () => _sharePdf(txs, tMerchants),
                                     icon: const Icon(Icons.share),
                                     label: const Text('مشاركة على واتساب'),
                                     style: ElevatedButton.styleFrom(
@@ -306,6 +343,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                           ),
                         ],
                       );
+                      });
                     },
                   ),
           ),

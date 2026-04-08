@@ -31,6 +31,11 @@ class MainLayout extends StatelessWidget {
             label: context.loc('delegates'),
           ),
           NavigationDestination(
+            icon: const Icon(Icons.store_outlined),
+            selectedIcon: const Icon(Icons.store),
+            label: context.loc('merchants'),
+          ),
+          NavigationDestination(
             icon: const Icon(Icons.bar_chart_outlined),
             selectedIcon: const Icon(Icons.bar_chart),
             label: context.loc('reports'),
